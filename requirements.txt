@@ -19,7 +19,6 @@ h5py==3.14.0
 httptools==0.6.4
 idna==3.10
 joblib==1.4.2
-keras==2.17.0           # compatible with tensorflow 2.17
 kiwisolver==1.4.9
 libclang==18.1.1
 Markdown==3.9
@@ -50,7 +49,7 @@ sniffio==1.3.1
 starlette==0.38.6
 tensorboard==2.17.0
 tensorboard-data-server==0.7.2
-tensorflow==2.17.0       # main tensorflow package
+tensorflow==2.17.0
 tensorflow-io-gcs-filesystem==0.31.0
 termcolor==3.1.0
 threadpoolctl==3.6.0
