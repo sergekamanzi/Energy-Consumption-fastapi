@@ -459,7 +459,7 @@ class TimeSeriesForecaster:
             logger.error(f"Error loading time series models: {e}")
             self.loaded = False
     
-    def predict_future_consumption(self, historical_data: List[float], months_ahead: int = 3):
+    def predict_future_consumption(self, historical_data: List[float], months_ahead: int = 2):
         """Predict future energy consumption using LSTM model"""
         if not self.loaded:
             return {"error": "Time series models not loaded"}
@@ -499,7 +499,7 @@ class TimeSeriesForecaster:
             logger.error(f"LSTM prediction error: {e}")
             return {"error": f"Prediction failed: {str(e)}"}
     
-    def predict_with_sarima(self, historical_data: List[float], months_ahead: int = 3):
+    def predict_with_sarima(self, historical_data: List[float], months_ahead: int = 2):
         """Predict using SARIMA model (fallback)"""
         if self.sarima_model is None:
             return {"error": "SARIMA model not available"}
@@ -684,7 +684,7 @@ class PredictionResponse(BaseModel):
 # Time Series Forecasting Models
 class TimeSeriesRequest(BaseModel):
     historical_data: List[float]
-    months_ahead: int = 3
+    months_ahead: int = 2
     household_info: Optional[Dict[str, Any]] = None
 
 class TimeSeriesPrediction(BaseModel):
@@ -1138,7 +1138,7 @@ async def forecast_energy_consumption(request: TimeSeriesRequest):
     
     **Requirements:**
     - Minimum 3 months of historical data
-    - Maximum 12 months forecast
+    - Maximum 2 months forecast
     - Historical data should be in kWh
     """
     try:
@@ -1149,11 +1149,8 @@ async def forecast_energy_consumption(request: TimeSeriesRequest):
                 detail="At least 3 months of historical data is required"
             )
         
-        if request.months_ahead < 1 or request.months_ahead > 12:
-            raise HTTPException(
-                status_code=400,
-                detail="Forecast horizon must be between 1 and 12 months"
-            )
+        # Clamp forecast horizon to [1, 2]
+        horizon = max(1, min(2, request.months_ahead))
         
         # Check for negative values
         if any(x < 0 for x in request.historical_data):
@@ -1162,12 +1159,12 @@ async def forecast_energy_consumption(request: TimeSeriesRequest):
                 detail="Historical data cannot contain negative values"
             )
         
-        logger.info(f"Time series forecast request: {len(request.historical_data)} months historical, {request.months_ahead} months ahead")
+        logger.info(f"Time series forecast request: {len(request.historical_data)} months historical, requested {request.months_ahead} months ahead -> using {horizon}")
         
         # Use LSTM model for prediction
         prediction_result = timeseries_forecaster.predict_future_consumption(
             request.historical_data, 
-            request.months_ahead
+            horizon
         )
         
         if "error" in prediction_result:
@@ -1175,7 +1172,7 @@ async def forecast_energy_consumption(request: TimeSeriesRequest):
             logger.warning("LSTM prediction failed, trying SARIMA fallback")
             prediction_result = timeseries_forecaster.predict_with_sarima(
                 request.historical_data,
-                request.months_ahead
+                horizon
             )
             
             if "error" in prediction_result:
@@ -1189,7 +1186,7 @@ async def forecast_energy_consumption(request: TimeSeriesRequest):
         # Generate month names
         current_date = datetime.now()
         month_names = []
-        for i in range(request.months_ahead):
+        for i in range(horizon):
             future_date = current_date + timedelta(days=30 * (i + 1))
             month_names.append(future_date.strftime("%B %Y"))
         
@@ -1224,9 +1221,9 @@ async def forecast_energy_consumption(request: TimeSeriesRequest):
         
         return TimeSeriesResponse(
             status="success",
-            message=f"Successfully forecasted {request.months_ahead} months of energy consumption",
+            message=f"Successfully forecasted {horizon} months of energy consumption",
             historical_data=[round(x, 2) for x in request.historical_data],
-            forecast_months=request.months_ahead,
+            forecast_months=horizon,
             predictions=predictions,
             total_forecasted_consumption=round(sum(prediction_result["predictions"]), 2),
             total_forecasted_bill=round(sum(bill_forecast["bill_predictions"]), 2),
@@ -1258,7 +1255,7 @@ async def get_timeseries_status():
         },
         "capabilities": {
             "min_historical_data": 3,
-            "max_forecast_months": 12,
+            "max_forecast_months": 2,
             "supported_models": ["LSTM", "SARIMA"],
             "input_requirements": "Monthly kWh consumption data"
         }
